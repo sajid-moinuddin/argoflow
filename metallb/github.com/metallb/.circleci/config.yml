@@ -1,0 +1,116 @@
+# -*- mode: yaml -*-
+
+version: 2
+jobs:
+  test-1.16:
+    docker:
+      - image: cimg/go:1.16
+    steps:
+      - checkout
+      - run: sudo apt-get update
+      - run: sudo apt-get install python3-pip
+      - run: sudo pip3 install invoke semver pyyaml
+      - run: inv test
+      - run: cp manifests/metallb.yaml manifests/metallb.yaml.prev
+  lint-1.16:
+    docker:
+      - image: cimg/go:1.16
+    steps:
+      - checkout
+      - run: sudo apt-get update
+      - run: sudo apt-get install python3-pip
+      - run: sudo pip3 install invoke semver pyyaml
+      - run: inv checkpatch
+      - run: inv lint -e host
+  # FIXME: this is pinned to v3.0.0 because subsequent versions of ct pull in new versions of helm, which are subject
+  #        to this bug: https://github.com/helm/helm/issues/8835, specifically for rbac object names with ':' in them
+  helm-lint:
+    working_directory: /repo
+    docker:
+      - image: quay.io/helmpack/chart-testing:v3.0.0
+    steps:
+      - checkout
+      - run: ct lint
+  # FIXME: instrumenta/helm-conftest does not yet support helm v3, v2 causes tests to fail.
+  #        Switch to it once https://github.com/instrumenta/helm-conftest/pull/8 is merged
+  helm-conftest:
+    working_directory: /repo
+    docker:
+      - image: alpine/helm:3.2.4
+    steps:
+      - run: apk add --update --no-cache git curl bash
+      - run: helm plugin install --debug https://github.com/instrumenta/helm-conftest
+      - checkout
+      - run: helm conftest charts/metallb/ -p charts/metallb/policy/ --fail-on-warn
+  publish-images:
+    docker:
+      - image: cimg/go:1.16
+    steps:
+      - checkout
+      # This job should not run against PRs, but we have seen it run unexpectedly, so
+      # double check and exit early if this is a job against a PR.
+      - run: if [ -n "$CIRCLE_PULL_REQUEST" ]; then circleci-agent step halt; fi
+      - setup_remote_docker
+      - run: sudo apt-get update && sudo apt-get install -y python3-pip
+      - run: sudo pip3 install invoke semver pyyaml
+      - run: docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
+      - run: mkdir -p ./bin
+      - run: wget -O ./bin/manifest-tool https://github.com/estesp/manifest-tool/releases/download/v1.0.3/manifest-tool-linux-amd64 && chmod +x ./bin/manifest-tool
+      - run: PATH=./bin:$PATH inv push-multiarch --binaries=controller --binaries=speaker --registry=docker.io --repo=metallb --tag=${CIRCLE_BRANCH:-${CIRCLE_TAG}}
+  publish-images-quay:
+    docker:
+      - image: cimg/go:1.16
+    steps:
+      - checkout
+      # This job should not run against PRs, but we have seen it run unexpectedly, so
+      # double check and exit early if this is a job against a PR.
+      - run: if [ -n "$CIRCLE_PULL_REQUEST" ]; then circleci-agent step halt; fi
+      - setup_remote_docker
+      - run: sudo apt-get update && sudo apt-get install -y python3-pip
+      - run: sudo pip3 install invoke semver pyyaml
+      - run: docker login quay.io -u $QUAY_USER -p $QUAY_PASSWORD
+      - run: mkdir -p ./bin
+      - run: wget -O ./bin/manifest-tool https://github.com/estesp/manifest-tool/releases/download/v1.0.3/manifest-tool-linux-amd64 && chmod +x ./bin/manifest-tool
+      - run: PATH=./bin:$PATH inv push-multiarch --binaries=controller --binaries=speaker --registry=quay.io --repo=metallb --tag=${CIRCLE_BRANCH:-${CIRCLE_TAG}}
+workflows:
+  version: 2
+  test-and-publish:
+    jobs:
+      - test-1.16:
+          filters:
+            tags:
+              only: /.*/
+      - lint-1.16:
+          filters:
+            tags:
+              only: /.*/
+      - helm-lint:
+          filters:
+            tags:
+              only: /.*/
+      - helm-conftest:
+          filters:
+            tags:
+              only: /.*/
+      - publish-images:
+          filters:
+            branches:
+              only:
+                - main
+                - /v.*/
+            tags:
+              only: /.*/
+          requires:
+            - test-1.16
+            - lint-1.16
+      - publish-images-quay:
+          filters:
+            branches:
+              only:
+                - main
+                - /v.*/
+            tags:
+              only: /.*/
+          requires:
+            - test-1.16
+            - lint-1.16

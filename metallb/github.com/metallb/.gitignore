@@ -1,0 +1,4 @@
+*.pyc
+build/
+website/public
+.envrc
