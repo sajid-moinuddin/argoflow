@@ -1,4 +1,4 @@
-kind create cluster --config kind/kind-cluster.yaml
+# kind create cluster --config kind/kind-cluster.yaml
 
 
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.3.6/components.yaml
@@ -20,3 +20,13 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 # Login to Kubeflow with "email-address" user@kubeflow.org and password 12341234
 
+#docker pull: 
+# install from: https://github.com/awslabs/amazon-ecr-credential-helper/releases and put in path
+# :~/fox/sm/argoflow $ cat ~/.docker/config.json 
+# {
+#     "credsStore": "ecr-login"
+# }
+
+
+#microk8s: 
+# https://github.com/ubuntu/microk8s/issues/1894
