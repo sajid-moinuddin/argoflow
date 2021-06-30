@@ -16,6 +16,14 @@ kustomize build metallb/ | kubectl apply -f -
 kustomize build argocd/ | kubectl apply -f -
 kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
 
+kubectl patch secret argocd-secret -n argocd \
+ -p '{"stringData": {
+   "admin.password": "$2a$08$tPs4upDY/SuEg6ApsRJO9OTfJq9MfJ/oMkvVdP2fXP5trAv7Jrqkm",
+   "admin.passwordMtime": "'$(date +%FT%T%Z)'"
+ }}'
+ 
+ 
+
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
 # Login to Kubeflow with "email-address" user@kubeflow.org and password 12341234
